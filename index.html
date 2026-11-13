@@ -1,6 +1,6 @@
 <!doctype html>
-<html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Célzáspróba — 5 fordulós geometriai minijáték</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WoT AimLabs — Weakspot aim</title>
 <style>
 :root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:#09111f;color:#eaf2ff}
 *{box-sizing:border-box}body{margin:0;padding:22px}.wrap{max-width:1100px;margin:auto}
@@ -26,21 +26,17 @@ button.secondary{background:transparent}
 #history{font-size:13px;color:#b5c7df;line-height:1.8}.hide{display:none!important}
 @media(max-width:760px){body{padding:12px}.grid{grid-template-columns:1fr}.card{padding:12px}}
 </style></head><body><div class="wrap">
-<header><div><div class="kicker">Interaktív geometriai játék</div><h1>Célzáspróba</h1><p>Öt szabálytalan, 3–6 csúcsú konvex sokszög. Öt célzás. Mennyire tudod megközelíteni az optimális találati esélyt?</p></div><div class="pill" id="stage">1 / 5. forduló</div></header>
+<header><div><div class="kicker">WoT AimLabs</div><h1>Weakspot aim</h1><p>Five irregular weakspots. Five shots. Aim for the optimal center.</p></div><div class="pill" id="stage">Round 1 / 5</div></header>
 <div class="grid"><section class="card">
-<canvas id="board" aria-label="Célzási rajzfelület"></canvas>
-<div class="legend"><span><b style="background:#66c2f1"></b>Célalakzat</span><span><b style="background:#f3ac63"></b>A te köröd</span><span><b style="background:#fc82ad"></b>Optimális célpont (kiértékelés után)</span></div>
-<p class="muted" style="margin-top:13px">Kattints az ábrára a kör középpontjának elhelyezéséhez. Utána húzással is finomíthatod. A kör sugara adott, nem változtatható.</p>
+<canvas id="board" aria-label="Aim board"></canvas>
+<div class="legend"><span><b style="background:#66c2f1"></b>Weakspot</span><span><b style="background:#f3ac63"></b>Aim circle</span><span><b style="background:#fc82ad"></b>Optimal</span></div>
+<p class="muted" style="margin-top:13px">Click or drag to position your aim circle. Submit when ready.</p>
 </section>
 <aside class="card">
-<b id="roundTitle">1. feladat</b><div class="progress" id="progress"></div>
-<div class="stat"><span>Csúcsok száma</span><strong id="vertices">—</strong></div>
-<div class="stat"><span>Beírt sugár (ρ)</span><strong id="rho">—</strong></div>
-<div class="stat"><span>Célzási sugár (r)</span><strong id="radius">—</strong></div>
-<div class="stat"><span>Köré írt sugár (R)</span><strong id="R">—</strong></div>
-<div class="feedback" id="feedback">Mozgasd a kört a megfelelő helyre, majd nyomd meg a „Tipp leadása” gombot.</div>
-<div class="buttons"><button id="submit" class="primary" disabled>Tipp leadása</button><button id="next" class="primary hide">Következő alakzat</button><button id="restart" class="secondary">Új játék indítása</button></div>
-<div style="margin-top:22px"><div class="muted">Összpontszám</div><div class="big"><span id="total">0</span><small style="font-size:16px;color:#a7bbd4"> / 500</small></div><div id="history"></div></div>
+<b id="roundTitle">1. weakspot</b><div class="progress" id="progress"></div>
+<div class="feedback" id="feedback">Place your aim and submit.</div>
+<div class="buttons"><button id="submit" class="primary" disabled>Submit aim</button><button id="next" class="primary hide">Next weakspot</button><button id="restart" class="secondary">New game</button></div>
+<div style="margin-top:22px"><div class="muted">Total score</div><div class="big"><span id="total">0</span><small style="font-size:16px;color:#a7bbd4"> / 500</small></div><div id="history"></div></div>
 </aside></div></div>
 <script>
 "use strict";
@@ -105,18 +101,46 @@ if(choice){let p=screen(choice);ctx.save();shape();ctx.clip();ctx.beginPath();ct
 ctx.beginPath();ctx.arc(p.x,p.y,b.r*scale,0,2*PI);ctx.strokeStyle="#f4ae65";ctx.lineWidth=2.5;ctx.stroke();
 ctx.beginPath();ctx.arc(p.x,p.y,5.5,0,2*PI);ctx.fillStyle="#ffcb84";ctx.fill()}
 if(judged){let p=screen(b.best.point);ctx.strokeStyle="#fc82ad";ctx.lineWidth=2.8;ctx.setLineDash([6,5]);ctx.beginPath();ctx.arc(p.x,p.y,b.r*scale,0,2*PI);ctx.stroke();ctx.setLineDash([]);ctx.beginPath();ctx.arc(p.x,p.y,6,0,2*PI);ctx.fillStyle="#fc82ad";ctx.fill();
-ctx.fillStyle="#ffc3d6";ctx.font="bold 12px system-ui";ctx.fillText("Optimum",p.x+10,p.y-10)}
+ctx.fillStyle="#ffc3d6";ctx.font="bold 12px system-ui";ctx.fillText("Optimal",p.x+10,p.y-10)}
 }
 function updatePreview(){}
-function render(){let b=current();$("stage").textContent=`${roundIndex+1} / 5. forduló`;$("roundTitle").textContent=`${roundIndex+1}. feladat`;$("vertices").textContent=b.n+" csúcs";$("rho").textContent=b.rho.toFixed(2);$("radius").textContent=b.r.toFixed(2);$("R").textContent=b.R.toFixed(2);$("feedback").textContent="A kör már látható. Kattintással vagy húzással helyezd oda, ahol szerinted a legjobb, majd add le a tipped.";$("submit").classList.remove("hide");$("submit").disabled=true;$("next").classList.add("hide");$("progress").innerHTML=Array.from({length:5},(_,i)=>`<div class="${i<roundIndex?'done':i===roundIndex?'current':''}"></div>`).join("");choice={...b.inc.point};judged=false;$("submit").disabled=false;updatePreview();draw()}
-function submit(){if(!choice||judged)return;judged=true;let b=current(),a=intersection(b.poly,choice,b.r),v=Math.min(1,a/b.best.area),pts=Math.round(100*v);
-results.push({n:b.n,pts,prob:100*a/(PI*b.r*b.r),optimal:100*b.best.area/(PI*b.r*b.r)});
-
-$("feedback").innerHTML=`<b>${pts} / 100 pont</b><br>A köröd a maximálisan elérhető metszetterület ${(100*v).toFixed(1)}%-át fedte le. A rózsaszín jelölés a numerikusan becsült optimális középpont.`;
-$("total").textContent=results.reduce((s,z)=>s+z.pts,0);
-$("history").innerHTML=results.map((z,i)=>`${i+1}. kör (${z.n}-szög): <b>${z.pts} pont</b>`).join("<br>");
-$("submit").classList.add("hide");$("next").classList.remove("hide");$("next").textContent=roundIndex===4?"Végeredmény":"Következő alakzat";draw()}
-function next(){if(roundIndex===4){$("stage").textContent="Játék vége";$("roundTitle").textContent="Végeredmény";$("feedback").innerHTML=`<b>Gratulálunk!</b><br>Összesen <b>${results.reduce((s,z)=>s+z.pts,0)} / 500</b> pontot szereztél öt alakzaton. Új sorozathoz nyomd meg az „Új játék indítása” gombot.`;$("next").classList.add("hide");$("progress").innerHTML="<div class='done'></div>".repeat(5);return}roundIndex++;render()}
+function render(){
+let b=current();
+$("stage").textContent=`Round ${roundIndex+1} / 5`;
+$("roundTitle").textContent=`${roundIndex+1}. weakspot`;
+$("feedback").textContent="Position your aim, then submit.";
+$("submit").classList.remove("hide");
+$("next").classList.add("hide");
+$("progress").innerHTML=Array.from({length:5},(_,i)=>`<div class="${i<roundIndex?'done':i===roundIndex?'current':''}"></div>`).join("");
+choice={...b.inc.point};judged=false;$("submit").disabled=false;draw()
+}
+function submit(){
+if(!choice||judged)return;
+judged=true;
+let b=current(),distance=dist(choice,b.best.point);
+// Strict distance scoring. A displacement of 0.32*r scores ~37 points.
+let normalized=distance/(0.32*b.r);
+let pts=Math.max(0,Math.min(100,Math.round(100*Math.exp(-normalized*normalized))));
+results.push({n:b.n,pts});
+let verdict=pts>=95?"Bullseye!":pts>=75?"Excellent!":pts>=50?"Good shot!":pts>=25?"Close.":"Missed.";
+$("feedback").innerHTML=`<b>${pts} / 100 — ${verdict}</b>`;
+$("total").textContent=results.reduce((sum,z)=>sum+z.pts,0);
+$("history").innerHTML=results.map((z,i)=>`Weakspot ${i+1}: <b>${z.pts} pts</b>`).join("<br>");
+$("submit").classList.add("hide");$("next").classList.remove("hide");
+$("next").textContent=roundIndex===4?"See results":"Next weakspot";
+draw()
+}
+function next(){
+if(roundIndex===4){
+$("stage").textContent="Complete";
+$("roundTitle").textContent="Final score";
+$("feedback").innerHTML=`<b>${results.reduce((sum,z)=>sum+z.pts,0)} / 500 points</b>`;
+$("next").classList.add("hide");
+$("progress").innerHTML="<div class='done'></div>".repeat(5);
+return
+}
+roundIndex++;render()
+}
 function restart(){rounds=Array.from({length:5},()=>newRound(3+Math.floor(Math.random()*4)));roundIndex=0;results=[];$("total").textContent="0";$("history").innerHTML="";render()}
 canvas.addEventListener("pointerdown",e=>{if(judged)return;choice=world(e);dragging=true;canvas.setPointerCapture(e.pointerId);$("submit").disabled=false;updatePreview();draw()});
 canvas.addEventListener("pointermove",e=>{if(!dragging||judged)return;choice=world(e);updatePreview();draw()});
