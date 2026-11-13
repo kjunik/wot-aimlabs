@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="hu"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Célzáspróba — 5 fordulós geometriai minijáték</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:#09111f;color:#eaf2ff}
+*{box-sizing:border-box}body{margin:0;padding:22px}.wrap{max-width:1100px;margin:auto}
+header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+h1{font-size:clamp(25px,3.6vw,39px);letter-spacing:-.04em;margin:0 0 7px}p{line-height:1.55;color:#aabbd4;margin:5px 0 12px}
+.kicker{color:#83d9ca;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 315px;gap:17px;margin-top:18px}
+.card{border:1px solid #263854;background:#111d30;border-radius:18px;padding:17px}
+canvas{width:100%;display:block;background:#0c1728;border-radius:12px;touch-action:none;cursor:crosshair}
+#board{aspect-ratio:1.27}button{border:1px solid #3b5577;background:#243a57;color:#f1f7ff;border-radius:11px;padding:12px 16px;font-weight:750;font-size:14px;cursor:pointer}
+button:hover:not(:disabled){background:#315273}button:disabled{opacity:.4;cursor:not-allowed}
+button.primary{background:#f3a95e;color:#172033;border-color:#f3a95e}button.primary:hover:not(:disabled){background:#ffc082}
+button.secondary{background:transparent}
+.buttons{display:grid;gap:9px;margin-top:17px}
+.stat{display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid #283a54;padding:12px 0}
+.stat span{color:#a4b5cd}.stat strong{font-variant-numeric:tabular-nums}
+.big{font-size:38px;letter-spacing:-.045em;font-weight:800;color:#ffd49c}
+.pill{background:#203a42;color:#9de3d6;border-radius:40px;padding:7px 11px;font-size:12px;font-weight:750}
+.legend{display:flex;gap:15px;flex-wrap:wrap;margin-top:13px;font-size:12px;color:#b1c4db}
+.legend b{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px}
+.muted{color:#91a6c1;font-size:13px}.feedback{border-radius:12px;background:#1c2d43;padding:13px;line-height:1.5;margin-top:15px;min-height:70px}
+.progress{display:flex;gap:6px;margin-top:10px}.progress div{height:7px;border-radius:20px;background:#2b3d57;flex:1}.progress div.done{background:#7acdbd}.progress div.current{background:#f3a95e}
+#history{font-size:13px;color:#b5c7df;line-height:1.8}.hide{display:none!important}
+@media(max-width:760px){body{padding:12px}.grid{grid-template-columns:1fr}.card{padding:12px}}
+</style></head><body><div class="wrap">
+<header><div><div class="kicker">Interaktív geometriai játék</div><h1>Célzáspróba</h1><p>Öt szabálytalan, 3–6 csúcsú konvex sokszög. Öt célzás. Mennyire tudod megközelíteni az optimális találati esélyt?</p></div><div class="pill" id="stage">1 / 5. forduló</div></header>
+<div class="grid"><section class="card">
+<canvas id="board" aria-label="Célzási rajzfelület"></canvas>
+<div class="legend"><span><b style="background:#66c2f1"></b>Célalakzat</span><span><b style="background:#f3ac63"></b>A te köröd</span><span><b style="background:#fc82ad"></b>Optimális célpont (kiértékelés után)</span></div>
+<p class="muted" style="margin-top:13px">Kattints az ábrára a kör középpontjának elhelyezéséhez. Utána húzással is finomíthatod. A kör sugara adott, nem változtatható.</p>
+</section>
+<aside class="card">
+<b id="roundTitle">1. feladat</b><div class="progress" id="progress"></div>
+<div class="stat"><span>Csúcsok száma</span><strong id="vertices">—</strong></div>
+<div class="stat"><span>Beírt sugár (ρ)</span><strong id="rho">—</strong></div>
+<div class="stat"><span>Célzási sugár (r)</span><strong id="radius">—</strong></div>
+<div class="stat"><span>Köré írt sugár (R)</span><strong id="R">—</strong></div>
+<div class="feedback" id="feedback">Mozgasd a kört a megfelelő helyre, majd nyomd meg a „Tipp leadása” gombot.</div>
+<div class="buttons"><button id="submit" class="primary" disabled>Tipp leadása</button><button id="next" class="primary hide">Következő alakzat</button><button id="restart" class="secondary">Új játék indítása</button></div>
+<div style="margin-top:22px"><div class="muted">Összpontszám</div><div class="big"><span id="total">0</span><small style="font-size:16px;color:#a7bbd4"> / 500</small></div><div id="history"></div></div>
+</aside></div></div>
+<script>
+"use strict";
+const canvas=document.getElementById("board"),ctx=canvas.getContext("2d"),$=id=>document.getElementById(id);
+const PI=Math.PI;
+const add=(a,b)=>({x:a.x+b.x,y:a.y+b.y}),sub=(a,b)=>({x:a.x-b.x,y:a.y-b.y}),mul=(a,k)=>({x:a.x*k,y:a.y*k}),dot=(a,b)=>a.x*b.x+a.y*b.y,cross=(a,b)=>a.x*b.y-a.y*b.x,dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+let rounds=[],roundIndex=0,choice=null,judged=false,dragging=false,results=[],view={};
+function polygonArea(p){let s=0;for(let i=0;i<p.length;i++)s+=cross(p[i],p[(i+1)%p.length]);return Math.abs(s)/2}
+function convex(p){for(let i=0;i<p.length;i++)if(cross(sub(p[(i+1)%p.length],p[i]),sub(p[(i+2)%p.length],p[(i+1)%p.length]))<=1e-6)return false;return true}
+function randomPolygon(n){
+// Változó szögtávolságok, oldalhosszak és erős nyírás: nem közel szabályos alakzatok.
+for(let t=0;t<5000;t++){
+let angles=Array.from({length:n},(_,i)=>2*PI*i/n+(Math.random()-.5)*1.05*2*PI/n);
+angles.sort((a,b)=>a-b);
+let radii=angles.map(()=>2.15+Math.random()*2.35);
+let shear=(Math.random()-.5)*1.3,stretch=.60+Math.random()*1.05;
+let p=angles.map((a,i)=>{let x=radii[i]*Math.cos(a),y=radii[i]*Math.sin(a);return{x:x+shear*y,y:stretch*y}});
+if(convex(p))return p;
+}
+// Biztonsági tartalék: szabálytalan, de garantáltan konvex affinkép.
+let shear=(Math.random()-.5)*1.6,stretch=.55+Math.random()*1.2;
+return Array.from({length:n},(_,i)=>{let a=2*PI*i/n,x=3.3*Math.cos(a),y=3.3*Math.sin(a);return{x:x+shear*y,y:stretch*y}})
+}
+function centroid(p){let sx=0,sy=0,s=0;for(let i=0;i<p.length;i++){let a=p[i],b=p[(i+1)%p.length],c=cross(a,b);s+=c;sx+=(a.x+b.x)*c;sy+=(a.y+b.y)*c}return{x:sx/(3*s),y:sy/(3*s)}}
+function inCircle(poly){let lines=poly.map((p,i)=>{let q=poly[(i+1)%poly.length],d=dist(p,q);return{a:-(q.y-p.y)/d,b:(q.x-p.x)/d,c:-cross(sub(q,p),p)/d}}); // a*x+b*y+c = signed inward distance
+let best={x:0,y:0},radius=-Infinity;
+for(let i=0;i<lines.length;i++)for(let j=i+1;j<lines.length;j++)for(let k=j+1;k<lines.length;k++){
+let L=[lines[i],lines[j],lines[k]],A=L.map(q=>[q.a,q.b,-1,-q.c]);
+for(let col=0;col<3;col++){let row=col;for(let z=col+1;z<3;z++)if(Math.abs(A[z][col])>Math.abs(A[row][col]))row=z;
+if(Math.abs(A[row][col])<1e-10){A=null;break}
+[A[col],A[row]]=[A[row],A[col]];let v=A[col][col];for(let m=col;m<4;m++)A[col][m]/=v;
+for(let z=0;z<3;z++)if(z!==col){let f=A[z][col];for(let m=col;m<4;m++)A[z][m]-=f*A[col][m]}}
+if(!A)continue;let x=A[0][3],y=A[1][3],r=A[2][3];
+if(r>radius&&lines.every(q=>q.a*x+q.b*y+q.c>=r-1e-7)){radius=r;best={x,y}}}
+if(radius<=0)throw Error("Nem sikerült a beírt kört meghatározni");
+return{point:best,radius}}
+function enclosing(poly){let candidates=[];for(let i=0;i<poly.length;i++)for(let j=i+1;j<poly.length;j++)candidates.push(mul(add(poly[i],poly[j]),.5));
+for(let i=0;i<poly.length;i++)for(let j=i+1;j<poly.length;j++)for(let k=j+1;k<poly.length;k++){
+let a=poly[i],u=sub(poly[j],a),v=sub(poly[k],a),D=2*cross(u,v);if(Math.abs(D)<1e-9)continue;
+candidates.push(add(a,{x:(dot(u,u)*v.y-dot(v,v)*u.y)/D,y:(dot(v,v)*u.x-dot(u,u)*v.x)/D}))}
+let best=null,radius=Infinity;for(let c of candidates){let r=Math.max(...poly.map(p=>dist(p,c)));if(r<radius){radius=r;best=c}}return{point:best,radius}}
+function edgeArea(a,b,r){let d=sub(b,a),aa=dot(d,d),bb=2*dot(a,d),cc=dot(a,a)-r*r,ts=[0,1],dis=bb*bb-4*aa*cc;
+if(dis>0){let s=Math.sqrt(dis);for(let t of [(-bb-s)/(2*aa),(-bb+s)/(2*aa)])if(t>0&&t<1)ts.push(t)}
+ts.sort((x,y)=>x-y);let result=0;for(let i=0;i<ts.length-1;i++){let t=ts[i],u=ts[i+1],p=add(a,mul(d,t)),q=add(a,mul(d,u)),m=add(a,mul(d,(t+u)/2));result+=dot(m,m)<r*r?cross(p,q)/2:r*r*Math.atan2(cross(p,q),dot(p,q))/2}return result}
+function intersection(poly,c,r){let a=0;for(let i=0;i<poly.length;i++)a+=edgeArea(sub(poly[i],c),sub(poly[(i+1)%poly.length],c),r);return Math.max(0,Math.min(polygonArea(poly),Math.abs(a)))}
+function search(poly,r,starts){let best=null,score=-Infinity;for(let st of starts){let p={...st},v=intersection(poly,p,r),step=1.3;
+for(let i=0;i<110&&step>1e-6;i++){let improved=false;for(let j=0;j<12;j++){let t=2*PI*j/12,q={x:p.x+step*Math.cos(t),y:p.y+step*Math.sin(t)},w=intersection(poly,q,r);if(w>v+1e-11){p=q;v=w;improved=true}}if(!improved)step*=.5}
+if(v>score){best=p;score=v}}
+return{point:best,area:score}}
+function newRound(n){let poly=randomPolygon(n),inc=inCircle(poly),out=enclosing(poly),r=inc.radius+(out.radius-inc.radius)*(.22+Math.random()*.56);
+let starts=[inc.point,out.point,centroid(poly),...poly.map(p=>mul(add(p,inc.point),.5))];
+let best=search(poly,r,starts);return{poly,n,r,rho:inc.radius,R:out.radius,best,inc,out}}
+function current(){return rounds[roundIndex]}
+function fit(){let dpr=Math.min(2,window.devicePixelRatio||1),w=canvas.clientWidth,h=canvas.clientHeight;canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);let b=current(),max=Math.max(...b.poly.map(p=>Math.hypot(p.x,p.y)))+b.r+1.3,scale=Math.min((w-30)/(2*max),(h-30)/(2*max));view={w,h,scale};}
+function screen(p){return{x:view.w/2+p.x*view.scale,y:view.h/2-p.y*view.scale}}
+function world(e){let rect=canvas.getBoundingClientRect();return{x:(e.clientX-rect.left-view.w/2)/view.scale,y:-(e.clientY-rect.top-view.h/2)/view.scale}}
+function draw(){if(!rounds.length)return;fit();let b=current(),{w,h,scale}=view;ctx.clearRect(0,0,w,h);
+ctx.strokeStyle="#20324a";ctx.lineWidth=1;for(let x=-8;x<=8;x++){let xx=screen({x,y:0}).x;ctx.beginPath();ctx.moveTo(xx,0);ctx.lineTo(xx,h);ctx.stroke()}for(let y=-8;y<=8;y++){let yy=screen({x:0,y}).y;ctx.beginPath();ctx.moveTo(0,yy);ctx.lineTo(w,yy);ctx.stroke()}
+function shape(){ctx.beginPath();b.poly.forEach((p,i)=>{let q=screen(p);i?ctx.lineTo(q.x,q.y):ctx.moveTo(q.x,q.y)});ctx.closePath()}
+shape();ctx.fillStyle="#378db544";ctx.fill();ctx.strokeStyle="#66c2f1";ctx.lineWidth=2.8;ctx.stroke();
+if(choice){let p=screen(choice);ctx.save();shape();ctx.clip();ctx.beginPath();ctx.arc(p.x,p.y,b.r*scale,0,2*PI);ctx.fillStyle="#efa95e66";ctx.fill();ctx.restore();
+ctx.beginPath();ctx.arc(p.x,p.y,b.r*scale,0,2*PI);ctx.strokeStyle="#f4ae65";ctx.lineWidth=2.5;ctx.stroke();
+ctx.beginPath();ctx.arc(p.x,p.y,5.5,0,2*PI);ctx.fillStyle="#ffcb84";ctx.fill()}
+if(judged){let p=screen(b.best.point);ctx.strokeStyle="#fc82ad";ctx.lineWidth=2.8;ctx.setLineDash([6,5]);ctx.beginPath();ctx.arc(p.x,p.y,b.r*scale,0,2*PI);ctx.stroke();ctx.setLineDash([]);ctx.beginPath();ctx.arc(p.x,p.y,6,0,2*PI);ctx.fillStyle="#fc82ad";ctx.fill();
+ctx.fillStyle="#ffc3d6";ctx.font="bold 12px system-ui";ctx.fillText("Optimum",p.x+10,p.y-10)}
+}
+function updatePreview(){}
+function render(){let b=current();$("stage").textContent=`${roundIndex+1} / 5. forduló`;$("roundTitle").textContent=`${roundIndex+1}. feladat`;$("vertices").textContent=b.n+" csúcs";$("rho").textContent=b.rho.toFixed(2);$("radius").textContent=b.r.toFixed(2);$("R").textContent=b.R.toFixed(2);$("feedback").textContent="A kör már látható. Kattintással vagy húzással helyezd oda, ahol szerinted a legjobb, majd add le a tipped.";$("submit").classList.remove("hide");$("submit").disabled=true;$("next").classList.add("hide");$("progress").innerHTML=Array.from({length:5},(_,i)=>`<div class="${i<roundIndex?'done':i===roundIndex?'current':''}"></div>`).join("");choice={...b.inc.point};judged=false;$("submit").disabled=false;updatePreview();draw()}
+function submit(){if(!choice||judged)return;judged=true;let b=current(),a=intersection(b.poly,choice,b.r),v=Math.min(1,a/b.best.area),pts=Math.round(100*v);
+results.push({n:b.n,pts,prob:100*a/(PI*b.r*b.r),optimal:100*b.best.area/(PI*b.r*b.r)});
+
+$("feedback").innerHTML=`<b>${pts} / 100 pont</b><br>A köröd a maximálisan elérhető metszetterület ${(100*v).toFixed(1)}%-át fedte le. A rózsaszín jelölés a numerikusan becsült optimális középpont.`;
+$("total").textContent=results.reduce((s,z)=>s+z.pts,0);
+$("history").innerHTML=results.map((z,i)=>`${i+1}. kör (${z.n}-szög): <b>${z.pts} pont</b>`).join("<br>");
+$("submit").classList.add("hide");$("next").classList.remove("hide");$("next").textContent=roundIndex===4?"Végeredmény":"Következő alakzat";draw()}
+function next(){if(roundIndex===4){$("stage").textContent="Játék vége";$("roundTitle").textContent="Végeredmény";$("feedback").innerHTML=`<b>Gratulálunk!</b><br>Összesen <b>${results.reduce((s,z)=>s+z.pts,0)} / 500</b> pontot szereztél öt alakzaton. Új sorozathoz nyomd meg az „Új játék indítása” gombot.`;$("next").classList.add("hide");$("progress").innerHTML="<div class='done'></div>".repeat(5);return}roundIndex++;render()}
+function restart(){rounds=Array.from({length:5},()=>newRound(3+Math.floor(Math.random()*4)));roundIndex=0;results=[];$("total").textContent="0";$("history").innerHTML="";render()}
+canvas.addEventListener("pointerdown",e=>{if(judged)return;choice=world(e);dragging=true;canvas.setPointerCapture(e.pointerId);$("submit").disabled=false;updatePreview();draw()});
+canvas.addEventListener("pointermove",e=>{if(!dragging||judged)return;choice=world(e);updatePreview();draw()});
+canvas.addEventListener("pointerup",()=>dragging=false);canvas.addEventListener("pointercancel",()=>dragging=false);
+$("submit").addEventListener("click",submit);$("next").addEventListener("click",next);$("restart").addEventListener("click",restart);
+window.addEventListener("resize",draw);restart();
+</script></body></html>
